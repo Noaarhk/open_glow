@@ -1,0 +1,17 @@
+# === 프로젝트 루트에서 firmware/ 만 추적 ===
+# 기본: 모든 것을 무시
+/*
+
+# firmware 디렉토리만 허용
+!/.gitignore
+!/firmware/
+
+# firmware 내부에서 무시할 것들
+firmware/build/
+firmware/.cache/
+firmware/sdkconfig.old
+
+# OS / IDE 파일
+.DS_Store
+.vscode/
+.clangd

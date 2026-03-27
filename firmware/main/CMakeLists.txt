@@ -1,0 +1,10 @@
+idf_component_register(SRCS "main.c"
+                            "event_queue.c"
+                            "button_handler.c"
+                            "device_fsm.c"
+                            "hal/hal_gpio.c"
+                            "hal/hal_adc.c"
+                            "hal/hal_pwm.c"
+                            "hal/hal_timer.c"
+                            "hal/hal_nvs.c"
+                    INCLUDE_DIRS "." "hal")
