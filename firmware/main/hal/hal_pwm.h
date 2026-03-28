@@ -27,7 +27,7 @@
 
 /* PWM 채널 정의 */
 typedef enum {
-    PWM_CH_EMS = 0,         /* EMS/BOOSTER/AIRSHOT 출력 */
+    PWM_CH_EMS = 0,         /* EMS/PULSE/THERMAL 출력 */
     PWM_CH_VIBRATION,       /* 진동 모터 */
     PWM_CH_COUNT
 } hal_pwm_channel_t;

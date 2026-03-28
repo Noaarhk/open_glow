@@ -19,10 +19,10 @@
 
 /* ===== 디바이스 모드 ===== */
 typedef enum {
-    MODE_BOOSTER = 0,
-    MODE_MC,                /* 미세전류 */
+    MODE_PULSE = 0,
+    MODE_MICRO,             /* 마이크로커런트 */
     MODE_EMS,               /* 근육 자극 */
-    MODE_AIRSHOT,
+    MODE_THERMAL,
     MODE_COUNT
 } device_mode_t;
 
@@ -78,10 +78,10 @@ typedef enum {
 #define RUNNING_WARNING_MS      480000  /* 8분 (경고) */
 
 /* ===== EMS PWM ===== */
-#define EMS_BOOSTER_FREQ_HZ     1000
-#define EMS_MC_FREQ_HZ          10      /* 소프트웨어 토글 */
+#define EMS_PULSE_FREQ_HZ       1000
+#define EMS_MICRO_FREQ_HZ       10      /* 소프트웨어 토글 */
 #define EMS_EMS_FREQ_HZ         3000
-#define EMS_AIRSHOT_FREQ_HZ     5000
+#define EMS_THERMAL_FREQ_HZ     5000
 #define EMS_PWM_RESOLUTION_BITS 13      /* 8192 단계 */
 
 /* ===== PID ===== */
@@ -116,8 +116,9 @@ typedef enum {
 #define SKIN_CONTACT_ACTIVE_LEVEL   1       /* TTP223: HIGH=접촉, LOW=비접촉 */
 
 /* ===== 진동 ===== */
-#define VIBRATION_MIN_DUTY_PCT  30
-#define VIBRATION_PWM_FREQ_HZ   20000   /* 가청 범위 밖 */
+#define VIBRATION_MIN_DUTY_PCT      30
+#define VIBRATION_PWM_FREQ_HZ       20000   /* 가청 범위 밖 */
+#define VIBRATION_PWM_RESOLUTION_BITS 10    /* 1024 단계 (20kHz에서 13bit 불가: 80MHz/20kHz=4000 < 8192) */
 
 /* ===== LED ===== */
 #define LED_BREATHE_PERIOD_MS   2000

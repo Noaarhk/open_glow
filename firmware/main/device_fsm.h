@@ -20,7 +20,7 @@
 typedef struct {
     device_state_t current_state;
     device_state_t previous_state;      /* 디버그/복구용 */
-    device_mode_t current_mode;         /* BOOSTER, MC, EMS, AIRSHOT */
+    device_mode_t current_mode;         /* PULSE, MICRO, EMS, THERMAL */
     uint8_t intensity_level;            /* 1~5 */
     uint32_t running_start_time_ms;     /* 세션 시작 시각 */
     uint32_t total_session_time_ms;     /* 누적 사용 시간 */

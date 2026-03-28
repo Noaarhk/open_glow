@@ -11,14 +11,16 @@
  *   HAL → 이벤트 큐 → 입력 → 출력 → 안전 → FSM → BLE → Watchdog
  */
 
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 #include "openglow_config.h"
 #include "debug_log.h"
 #include "event_queue.h"
 #include "button_handler.h"
 #include "device_fsm.h"
+#include "ems_controller.h"
+#include "led_controller.h"
+#include "vibration_controller.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_adc.h"
 #include "hal/hal_pwm.h"
@@ -52,9 +54,9 @@ void app_main(void)
     /* TODO Phase 3: battery_init(); */
 
     /* 4. 출력 모듈 */
-    /* TODO Phase 2: ems_init(); */
-    /* TODO Phase 2: led_init(); */
-    /* TODO Phase 2: vibration_init(); */
+    ems_init();
+    led_init();
+    vibration_init();
 
     /* 5. 안전 관리자 (출력 모듈 이후 — 비상 차단 GPIO 설정) */
     /* TODO Phase 3: safety_init(); */
@@ -87,9 +89,9 @@ void app_main(void)
         fsm_update();
 
         /* 출력 업데이트 (FSM이 설정한 값 반영) */
-        /* TODO Phase 2: ems_update(); */
-        /* TODO Phase 2: led_update(); */
-        /* TODO Phase 2: vibration_update(); */
+        ems_update();
+        led_update();
+        vibration_update();
 
         /* BLE 동기화 */
         /* TODO Phase 4: ble_update(); */

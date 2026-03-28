@@ -8,6 +8,9 @@
 
 #include "device_fsm.h"
 #include "event_queue.h"
+#include "ems_controller.h"
+#include "led_controller.h"
+#include "vibration_controller.h"
 #include "debug_log.h"
 #include "esp_timer.h"
 
@@ -48,7 +51,8 @@ static void fsm_transition(device_state_t new_state)
     switch (ctx.current_state) {
         case STATE_RUNNING:
             ctx.total_session_time_ms += get_time_ms() - ctx.running_start_time_ms;
-            /* TODO: ems_stop(), vibration_stop() */
+            ems_stop();
+            vibration_stop();
             break;
         default:
             break;
@@ -63,29 +67,48 @@ static void fsm_transition(device_state_t new_state)
     switch (new_state) {
         case STATE_IDLE:
             ctx.last_interaction_ms = get_time_ms();
-            /* TODO: led_breathe() */
+            led_set_mode_color(ctx.current_mode);
+            led_breathe(LED_BREATHE_PERIOD_MS);
+            if (ctx.previous_state == STATE_OFF) {
+                vibration_pulse(200, 0, 1);  /* 전원 ON 햅틱 피드백 */
+            }
             break;
         case STATE_MODE_SELECT:
-            /* TODO: led_blink(), vibration_pulse() */
+            led_set_mode_color(ctx.current_mode);
+            led_blink(LED_BLINK_FAST_MS, LED_BLINK_FAST_MS);
+            vibration_pulse(100, 0, 1);  /* 햅틱 피드백 1회 */
             break;
         case STATE_RUNNING:
             ctx.running_start_time_ms = get_time_ms();
-            /* TODO: ems_set_mode(), ems_start(), led_set_mode_color() */
+            ems_set_mode(ctx.current_mode);
+            ems_set_intensity(ctx.intensity_level);
+            ems_start();
+            led_set_mode_color(ctx.current_mode);
+            /* 밝기 = 세기에 비례 (1→51, 2→102, 3→153, 4→204, 5→255) */
+            led_set_brightness(ctx.intensity_level * 51);
             break;
         case STATE_PAUSED:
-            /* TODO: ems_stop(), led_blink_slow() */
+            ems_stop();
+            led_blink(LED_BLINK_SLOW_MS, LED_BLINK_SLOW_MS);
             break;
         case STATE_CHARGING:
-            /* TODO: ems_stop(), led_show_battery_level() */
+            ems_stop();
+            led_show_battery_level(50);  /* TODO Phase 3: battery_get_percent() */
             break;
         case STATE_ERROR:
-            /* TODO: ems_stop(), led_blink_error(), vibration_pulse(3) */
+            ems_stop();
+            led_set_color(255, 0, 0);  /* 빨간색 */
+            led_blink(100, 100);       /* 빠른 깜빡임 */
+            vibration_pulse(200, 100, 3);  /* 강한 경고 3회 */
             break;
         case STATE_SHUTDOWN:
-            /* TODO: ems_stop(), led_fade_out(), vibration_pulse(1) */
+            ems_stop();
+            led_fade_out(LED_FADE_OUT_MS);
+            vibration_pulse(100, 0, 1);  /* 종료 알림 1회 */
             break;
         case STATE_OFF:
-            /* TODO: deep_sleep() */
+            led_off();
+            /* TODO Phase 5: esp_deep_sleep_start() */
             break;
         default:
             break;
@@ -132,11 +155,12 @@ static void handle_mode_select(event_t *evt)
 {
     switch (evt->type) {
         case EVENT_BTN_MODE_SHORT:
-            /* 모드 순환: BOOSTER → MC → EMS → AIRSHOT → BOOSTER */
+            /* 모드 순환: PULSE → MICRO → EMS → THERMAL → PULSE */
             ctx.current_mode = (ctx.current_mode + 1) % MODE_COUNT;
             ctx.last_interaction_ms = get_time_ms();
             LOG_INFO("Mode changed to %d", ctx.current_mode);
-            /* TODO: led_set_mode_color(), vibration_pulse(1) */
+            led_set_mode_color(ctx.current_mode);
+            vibration_pulse(100, 0, 1);
             break;
         case EVENT_BTN_POWER_SHORT:
             /* 모드 확정, 실행 시작 */
@@ -159,7 +183,9 @@ static void handle_running(event_t *evt)
             ctx.intensity_level = (ctx.intensity_level % 5) + 1;
             ctx.last_interaction_ms = get_time_ms();
             LOG_INFO("Intensity changed to %d", ctx.intensity_level);
-            /* TODO: ems_set_intensity(), vibration_pulse() */
+            ems_set_intensity(ctx.intensity_level);
+            led_set_brightness(ctx.intensity_level * 51);
+            vibration_pulse(50, 0, 1);
             break;
         case EVENT_SKIN_CONTACT_OFF:
             ctx.skin_contact = false;
@@ -173,17 +199,22 @@ static void handle_running(event_t *evt)
             fsm_transition(STATE_SHUTDOWN);
             break;
         case EVENT_SAFETY_TEMP_WARNING:
+            ctx.error_code = ERR_TEMP_WARNING;
+            fsm_transition(STATE_ERROR);
+            break;
         case EVENT_SAFETY_TEMP_CRITICAL:
+            ctx.error_code = ERR_TEMP_CRITICAL;
+            fsm_transition(STATE_ERROR);
+            break;
         case EVENT_SAFETY_BATTERY_CRITICAL:
-            ctx.error_code = (evt->type == EVENT_SAFETY_TEMP_WARNING) ?
-                             ERR_TEMP_WARNING : ERR_TEMP_CRITICAL;
+            ctx.error_code = ERR_BATTERY_CRITICAL;
             fsm_transition(STATE_ERROR);
             break;
         case EVENT_SAFETY_AUTO_TIMEOUT:
             fsm_transition(STATE_SHUTDOWN);
             break;
         case EVENT_SAFETY_AUTO_WARNING:
-            /* TODO: vibration_pulse(2) — 8분 경고 */
+            vibration_pulse(150, 100, 2);  /* 8분 경고: 약한 진동 2회 */
             LOG_INFO("Auto timeout warning (8min)");
             break;
         default:
@@ -196,7 +227,13 @@ static void handle_paused(event_t *evt)
     switch (evt->type) {
         case EVENT_SKIN_CONTACT_ON:
             ctx.skin_contact = true;
-            fsm_transition(STATE_RUNNING);
+            /* 3초 이내 재접촉 → RUNNING 복귀, 3초 초과 → IDLE */
+            if (get_time_ms() - ctx.state_enter_time_ms < PAUSE_RESUME_MS) {
+                fsm_transition(STATE_RUNNING);
+            } else {
+                LOG_INFO("Skin contact after 3s, returning to IDLE");
+                fsm_transition(STATE_IDLE);
+            }
             break;
         case EVENT_BTN_POWER_SHORT:
             fsm_transition(STATE_IDLE);
@@ -303,7 +340,7 @@ void fsm_init(void)
     ctx = (device_context_t){
         .current_state      = STATE_OFF,
         .previous_state     = STATE_OFF,
-        .current_mode       = MODE_BOOSTER,
+        .current_mode       = MODE_PULSE,
         .intensity_level    = 1,
         .running_start_time_ms = 0,
         .total_session_time_ms = 0,

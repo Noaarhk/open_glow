@@ -1,15 +1,24 @@
-# === 프로젝트 루트에서 firmware/ 만 추적 ===
-# 기본: 모든 것을 무시
+# === 기본: 모든 것을 무시하고, 필요한 것만 허용 ===
 /*
 
-# firmware 디렉토리만 허용
+# 프로젝트 파일 허용
 !/.gitignore
+!/README.md
+!/CLAUDE.md
+!/docs/
 !/firmware/
+
+# docs 내부에서 무시할 것들
+# 개인 문서 (이력서, 학습 노트 등)
+/docs/resume/
+/docs/study/
 
 # firmware 내부에서 무시할 것들
 firmware/build/
 firmware/.cache/
 firmware/sdkconfig.old
+# ESP-IDF 자동 다운로드 (node_modules과 동일)
+firmware/managed_components/
 
 # OS / IDE 파일
 .DS_Store
