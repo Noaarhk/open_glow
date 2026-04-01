@@ -77,6 +77,8 @@ void vibration_pulse(uint16_t on_ms, uint16_t off_ms, uint8_t count)
     ctx.pulse_next_ms = hal_timer_get_ms() + on_ms;
     hal_pwm_set_duty(PWM_CH_VIBRATION, ctx.current_duty);
     hal_pwm_start(PWM_CH_VIBRATION);
+    LOG_INFO("VIB pulse START: duty=%lu, on=%dms, count=%d",
+             (unsigned long)ctx.current_duty, on_ms, count);
 }
 
 void vibration_start(void)
