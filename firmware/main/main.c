@@ -17,6 +17,9 @@
 #include "debug_log.h"
 #include "event_queue.h"
 #include "button_handler.h"
+#include "skin_contact.h"
+#include "battery_monitor.h"
+#include "safety_manager.h"
 #include "device_fsm.h"
 #include "ems_controller.h"
 #include "led_controller.h"
@@ -50,16 +53,16 @@ void app_main(void)
 
     /* 3. 입력 모듈 */
     button_init();
-    /* TODO Phase 3: skin_contact_init(); */
-    /* TODO Phase 3: battery_init(); */
+    skin_contact_init();
+    battery_init();
 
     /* 4. 출력 모듈 */
     ems_init();
     led_init();
     vibration_init();
 
-    /* 5. 안전 관리자 (출력 모듈 이후 — 비상 차단 GPIO 설정) */
-    /* TODO Phase 3: safety_init(); */
+    /* 5. 안전 관리자 (출력 모듈 이후 — 비상 차단 시 ems_emergency_stop 호출) */
+    safety_init();
 
     /* 6. 상태 머신 (모든 모듈 이후) */
     fsm_init();
@@ -79,11 +82,11 @@ void app_main(void)
 
         /* 입력 수집 (센서 → 이벤트 생성) */
         button_update();
-        /* TODO Phase 3: skin_contact_update(); */
-        /* TODO Phase 3: battery_update(); */
+        skin_contact_update();
+        battery_update();       /* ADC 5초 간격, 충전 GPIO 매 루프 */
 
-        /* 안전 체크 (최신 센서 데이터 기반) */
-        /* TODO Phase 3: safety_update(); */
+        /* 안전 체크 (최신 센서 데이터 기반, battery_update 이후여야 함) */
+        safety_update();
 
         /* 중앙 제어 (이벤트 소비 → 상태 전이) */
         fsm_update();
