@@ -171,8 +171,27 @@ while(1) {
 
 ## 현재 상태
 
-**Phase 1 (기반 구조)** — 소스 코드 미작성, 설계/문서화 완료 단계.
-`firmware/` 디렉토리는 아직 생성되지 않음. ESP-IDF 프로젝트 생성부터 시작.
+**Phase 4 (통신)** — BLE GATT 서버 구현 + nRF Connect 테스트 완료.
+
+### 완료된 Phase
+- **Phase 1 (기반 구조)** ✅ — config, HAL, event_queue, button, FSM, debug_log, main.c
+- **Phase 2 (출력 모듈)** ✅ — EMS PWM(4모드), LED(WS2812B RMT), 진동(코인 모터)
+- **Phase 3 (센서 및 안전)** ✅ — 피부 접촉(TTP223), 배터리/온도(ADC), 안전 관리자(이중 안전 + 3단계 센서 정책)
+- **Phase 4 (통신)** ✅ — BLE GATT 서버(9개 Characteristic), Read/Write/Notify 동작 확인
+
+### 하드웨어 테스트 현황
+- 전원/모드 버튼 (GPIO0/4) ✅
+- WS2812B LED (GPIO18) ✅
+- 진동 모터 + IRLZ44N (GPIO19) ✅
+- TTP223 터치 센서 (GPIO32) ✅
+- NTC 온도 센서 (GPIO35) ✅
+- 배터리 전압 ADC (GPIO34) ✅
+- 충전 감지 (GPIO27) ⏭️ (TP4056 CHRG 핀 미노출)
+- BLE 연결 (nRF Connect) ✅
+
+### 다음 단계
+- Phase 5 (고도화): PID 트랜지션, LED 패턴, 비선형 배터리 보간 등
+- NVS 세션 로그 (Phase 4 잔여)
 
 ## 빌드 & 플래시
 
