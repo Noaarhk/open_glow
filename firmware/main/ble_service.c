@@ -17,6 +17,7 @@
  *   6: Temperature     (Read + Notify)     1 byte   - 온도 (정수)
  *   7: Safety Status   (Read + Notify)     2 bytes  - 안전 상태
  *   8: Error Log       (Read)              max 10   - 에러 코드 배열
+ *   9: Session Log     (Read + Notify)     18 bytes - 세션 로그 (packed struct)
  */
 
 #include "ble_service.h"
@@ -25,6 +26,7 @@
 #include "device_fsm.h"
 #include "battery_monitor.h"
 #include "safety_manager.h"
+#include "session_log.h"
 #include "led_controller.h"
 #include "debug_log.h"
 #include "hal/hal_timer.h"
@@ -48,7 +50,7 @@ static const uint8_t SERVICE_UUID[16] = {
 
 /* Characteristic UUID: 0000FFE1 ~ 0000FFE9 */
 #define CHAR_UUID_BASE          0xFFE1
-#define CHAR_COUNT              9
+#define CHAR_COUNT              10
 
 /* Characteristic 인덱스 */
 enum {
@@ -61,6 +63,7 @@ enum {
     CHAR_TEMPERATURE,       /* 0xFFE7 */
     CHAR_SAFETY_STATUS,     /* 0xFFE8 */
     CHAR_ERROR_LOG,         /* 0xFFE9 */
+    CHAR_SESSION_LOG,       /* 0xFFEA — 세션 로그 (Read + Notify) */
 };
 
 /* ===== GATT 핸들 테이블 ===== */
@@ -90,6 +93,7 @@ static struct {
     int8_t  last_temp;
     uint8_t last_safety_state;
     uint8_t last_error_code;
+    bool last_session_active;   /* 세션 종료 감지용 */
 } ctx;
 
 /* ===== Characteristic 속성 정의 ===== */
@@ -119,6 +123,7 @@ static uint8_t val_battery = 100;
 static uint8_t val_temperature = 25;
 static uint8_t val_safety[2] = { 0, 0 };
 static uint8_t val_error_log[10] = { 0 };
+static uint8_t val_session_log[18] = { 0 };  /* session_log_t packed = 18 bytes */
 
 /* 각 Characteristic의 16-bit UUID */
 static uint16_t char_uuids[CHAR_COUNT];
@@ -165,6 +170,7 @@ static void build_gatt_db(void)
         [CHAR_TEMPERATURE]   = { &prop_read_notify,         &val_temperature, 1, 1,  true  },
         [CHAR_SAFETY_STATUS] = { &prop_read_notify,         val_safety,      2,  2,  true  },
         [CHAR_ERROR_LOG]     = { &prop_read,                val_error_log,   10, 10, false },
+        [CHAR_SESSION_LOG]   = { &prop_read_notify,         val_session_log, 18, 18, true  },
     };
 
     for (int i = 0; i < CHAR_COUNT; i++) {
@@ -462,6 +468,25 @@ void ble_update(void)
         val_safety[1] = error_code;
         send_notify(CHAR_SAFETY_STATUS, val_safety, 2);
     }
+
+    /* 세션 로그 → Notify (세션 종료 시 최종 데이터 전송) */
+    bool session_active = session_log_is_active();
+    if (ctx.last_session_active && !session_active) {
+        /* 세션이 방금 종료됨 → NVS에서 최종 로그 읽어서 Notify */
+        session_log_t log;
+        if (session_log_get_latest(&log)) {
+            memcpy(val_session_log, &log, sizeof(session_log_t));
+            send_notify(CHAR_SESSION_LOG, val_session_log, sizeof(session_log_t));
+        }
+    } else if (session_active) {
+        /* 세션 진행 중 → GATT DB만 갱신 (Read 시 최신 스냅샷 반환) */
+        session_log_t log;
+        if (session_log_get_current(&log)) {
+            memcpy(val_session_log, &log, sizeof(session_log_t));
+            update_attr_value(CHAR_SESSION_LOG, val_session_log, sizeof(session_log_t));
+        }
+    }
+    ctx.last_session_active = session_active;
 }
 
 /* 미사용 — FSM에서 BLE 연결 상태 동기 조회 시 활성화 예정

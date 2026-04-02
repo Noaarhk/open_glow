@@ -12,6 +12,7 @@
 #include "led_controller.h"
 #include "vibration_controller.h"
 #include "battery_monitor.h"
+#include "session_log.h"
 #include "debug_log.h"
 #include "esp_timer.h"
 
@@ -52,8 +53,18 @@ static void fsm_transition(device_state_t new_state)
     switch (ctx.current_state) {
         case STATE_RUNNING:
             ctx.total_session_time_ms += get_time_ms() - ctx.running_start_time_ms;
+            /* PAUSED로 갈 때는 세션 유지 (재접촉 시 이어서 기록) */
+            if (new_state != STATE_PAUSED) {
+                session_log_end();  /* NVS에 세션 저장 */
+            }
             ems_stop();
             vibration_stop();
+            break;
+        case STATE_PAUSED:
+            /* PAUSED에서 RUNNING 복귀가 아니면 세션 종료 */
+            if (new_state != STATE_RUNNING && session_log_is_active()) {
+                session_log_end();
+            }
             break;
         default:
             break;
@@ -81,6 +92,10 @@ static void fsm_transition(device_state_t new_state)
             break;
         case STATE_RUNNING:
             ctx.running_start_time_ms = get_time_ms();
+            /* PAUSED 복귀 시 세션 이어서 기록, 새 진입 시에만 시작 */
+            if (!session_log_is_active()) {
+                session_log_start(ctx.current_mode, ctx.intensity_level);
+            }
             ems_set_mode(ctx.current_mode);
             ems_set_intensity(ctx.intensity_level);
             ems_start();
@@ -201,6 +216,7 @@ static void handle_running(event_t *evt)
             ems_set_intensity(ctx.intensity_level);
             led_set_brightness(ctx.intensity_level * 51);
             vibration_pulse(50, 0, 1);
+            session_log_add_shot();
             break;
         case EVENT_SKIN_CONTACT_OFF:
             ctx.skin_contact = false;
@@ -241,6 +257,7 @@ static void handle_running(event_t *evt)
                 ems_set_intensity(ctx.intensity_level);
                 led_set_brightness(ctx.intensity_level * 51);
                 vibration_pulse(50, 0, 1);
+                session_log_add_shot();
             }
             break;
         }

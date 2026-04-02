@@ -25,6 +25,7 @@
 #include "led_controller.h"
 #include "vibration_controller.h"
 #include "ble_service.h"
+#include "session_log.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_adc.h"
 #include "hal/hal_pwm.h"
@@ -72,6 +73,9 @@ void app_main(void)
     /* 5. 안전 관리자 (출력 모듈 이후 — 비상 차단 시 ems_emergency_stop 호출) */
     safety_init();
 
+    /* 5.5 세션 로그 (NVS에서 이전 세션 데이터 로드) */
+    session_log_init();
+
     /* 6. 상태 머신 (모든 모듈 이후) */
     fsm_init();
 
@@ -101,6 +105,17 @@ void app_main(void)
 
         /* 안전 출력 제한 반영 (safety → EMS 듀티 스케일링) */
         ems_set_output_limit(safety_get_output_limit());
+
+        /* 세션 로그 업데이트 (RUNNING 중 센서 데이터 추적) */
+        if (fsm_get_state() == STATE_RUNNING) {
+            const device_context_t *ctx = fsm_get_context();
+            session_log_update(
+                (uint8_t)ctx->current_mode,
+                ctx->intensity_level,
+                (uint8_t)battery_get_temperature(),
+                battery_get_percent()
+            );
+        }
 
         /* 출력 업데이트 (FSM이 설정한 값 반영) */
         ems_update();
