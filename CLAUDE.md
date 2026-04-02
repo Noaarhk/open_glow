@@ -228,7 +228,7 @@ cmake -B build && cmake --build build && ./build/test_runner
 - 번호 형식: BUG-001, BUG-002, ...
 
 ### 3. Q&A 기록
-사용자의 질문과 답변을 `docs/QNA_LOG.md`에 기록:
+사용자의 질문과 답변을 `docs/study/QNA_LOG.md`에 기록:
 - 질문 맥락, 답변 요약
 - 번호 형식: Q-001, Q-002, ...
 

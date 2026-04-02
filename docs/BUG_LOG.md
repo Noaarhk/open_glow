@@ -199,3 +199,61 @@
   2. MOSFET이 뜨거워지면 **즉시** 전원을 차단해야 함. 지체할수록 피해가 상류(ESP32 보드)로 확대됨.
   3. 프로토타입 단계에서 여분의 보드를 준비하는 것이 좋음.
 - **손상 부품**: ESP32 DevKitC V4 보드 1개 (총 누적: WS2812B 1개, IRLZ44N 1개, ESP32 보드 1개)
+
+---
+
+## BUG-014: 센서 미연결 시 비상 차단 오발동 (온도 93.8°C / 배터리 0%)
+
+- **발견 시점**: Phase 3 — 센서 모듈 통합 후 첫 flash monitor
+- **증상**: 부팅 5초 후 `CRITICAL: Temp 93.8°C >= 50°C → EMERGENCY SHUTDOWN` 또는 `CRITICAL: Battery 0% <= 5% → EMERGENCY SHUTDOWN` 발생. GPIO34(배터리), GPIO35(온도) 미연결 상태.
+- **원인**:
+  1. **온도**: GPIO35 플로팅 → ADC 노이즈 값이 낮은 저항으로 해석 → Steinhart-Hart 변환에서 93.8°C 산출 → 비상 차단
+  2. **배터리**: GPIO34 플로팅 → ADC 노이즈 값이 낮은 전압으로 변환 → 0% → 비상 차단
+  3. **유효성 검사 부실**: 기존 코드는 raw==0 또는 raw==4095만 센서 고장으로 판단. 플로팅 핀의 중간 노이즈 값은 통과.
+  4. **유효성 통합**: `battery_is_valid()`가 전압/온도를 하나로 묶어 판단. 하나만 이상해도 구분 불가.
+- **해결**:
+  1. `battery_is_valid()` → `battery_is_voltage_valid()` + `battery_is_temp_valid()`로 분리
+  2. ADC raw 체크 + **변환값 범위 체크** 이중 검증:
+     - 온도: -20~80°C 밖이면 invalid (센서 미연결/고장)
+     - 전압: 2.5~4.5V 밖이면 invalid (분압 회로 미연결)
+  3. `safety_manager.c`에서 센서별 유효성 확인 후 체크:
+     - `check_temperature()`: `battery_is_temp_valid()` false면 스킵
+     - `check_battery()`: `battery_is_voltage_valid()` false면 스킵
+  4. 초기값을 `valid=true` → `valid=false`로 변경 (첫 ADC 읽기 전까지 미확정)
+- **교훈**:
+  1. 플로팅 GPIO의 ADC 값은 0이나 4095가 아닌 랜덤 노이즈일 수 있음. raw 체크만으로는 미연결 감지 불가.
+  2. **물리적 범위 체크**가 센서 유효성 판단의 핵심. ADC raw → 물리량 변환 후 현실적 범위 내인지 확인.
+  3. 안전 모듈은 센서 데이터를 "항상 믿을 수 있다"고 가정하면 안 됨. 유효성이 보장된 데이터만 사용해야 함.
+
+---
+
+## BUG-015: 센서 감지 성공 후 첫 ADC 읽기 전 고장 오판
+
+- **발견 시점**: Phase 3 — 3단계 센서 안전 정책 구현 후 NTC 연결 테스트
+- **증상**: NTC가 정상 연결되어 있는데 부팅 직후 `Temp sensor FAULT (was connected, now invalid) → EMERGENCY SHUTDOWN` 발생
+- **원인**: `battery_init()`에서 센서를 `connected=true`로 감지하지만, `temp_valid`는 `false`로 초기화. `battery_update()`의 첫 ADC 읽기는 5초 간격 체크(`BATTERY_UPDATE_INTERVAL_MS`) 때문에 스킵됨. 그 사이 `safety_update()` → `check_temperature()`가 호출되어 `connected=true, valid=false` → "고장" → 비상 차단.
+  ```
+  battery_init():  connected=true, valid=false (초기값)
+  main loop 1:     battery_update() → 5초 안 됐으니 ADC 안 읽음 → valid=false 유지
+                   safety_update() → connected=true + valid=false → 고장 판정!
+  ```
+- **해결**: `battery_init()`에서 센서 연결 감지 성공 시 `valid`도 `true`로 세팅. 초기화 시 이미 유효한 값을 여러 번 읽어서 연결을 확인했으므로, 첫 정기 ADC 읽기 전까지는 "유효"로 간주해도 안전.
+- **교훈**: 새로운 안전 메커니즘을 추가할 때, 기존 타이밍 흐름(5초 간격 ADC)과의 상호작용을 반드시 검토. "초기화 시 감지"와 "런타임 갱신" 사이의 공백 구간에서 오판이 발생할 수 있음.
+
+---
+
+## BUG-016: ESP_LOGD가 컴파일에서 제외되어 DEBUG 로그 미출력
+
+- **발견 시점**: Phase 3 — NTC 온도 로그 확인 시도
+- **증상**: `esp_log_level_set("BAT", ESP_LOG_DEBUG)` 설정 후 `flash monitor`해도 BAT 모듈의 DEBUG 로그가 출력되지 않음
+- **원인**: ESP-IDF의 `sdkconfig`에서 `CONFIG_LOG_MAXIMUM_LEVEL=3` (INFO)으로 설정되어 있어, `ESP_LOGD()` 호출이 **컴파일 시점에** 제거됨. 런타임에 레벨을 바꿔도 바이너리에 코드 자체가 없으므로 효과 없음. 추가로 우리 `debug_log.h`의 `LOG_DEBUG` 매크로도 `LOG_LEVEL`에 의해 컴파일 시점 게이팅되는 이중 구조.
+  ```
+  레이어 1 (우리 코드): LOG_LEVEL=INFO → LOG_DEBUG(...) = ((void)0)
+  레이어 2 (ESP-IDF):   CONFIG_LOG_MAXIMUM_LEVEL=3 → ESP_LOGD() 제거
+  → 두 레이어 모두 풀어야 DEBUG 출력 가능
+  ```
+- **해결**:
+  1. `openglow_config.h`: `LOG_LEVEL`을 `LOG_LEVEL_DEBUG`로 변경 (우리 매크로 게이트 해제)
+  2. `sdkconfig`: `CONFIG_LOG_DEFAULT_LEVEL=4`, `CONFIG_LOG_MAXIMUM_LEVEL=4`로 변경 (ESP-IDF 게이트 해제)
+  3. `main.c`: `esp_log_level_set("*", ESP_LOG_INFO)` + `esp_log_level_set("BAT", ESP_LOG_DEBUG)`로 런타임 제어 — 전체는 INFO, 보고 싶은 모듈만 DEBUG
+- **교훈**: ESP-IDF 로그 시스템은 컴파일 타임(`CONFIG_LOG_MAXIMUM_LEVEL`)과 런타임(`esp_log_level_set`)의 2단계 필터링. 런타임 설정만으로는 컴파일 타임에 제거된 로그를 복구할 수 없음. 개발 단계에서는 `MAXIMUM_LEVEL`을 DEBUG로 열어두고 런타임에서 모듈별로 제어하는 것이 유연함.

@@ -39,6 +39,13 @@ void app_main(void)
     LOG_INFO("Prototype mode: %s", PROTOTYPE_MODE ? "ON" : "OFF");
     LOG_INFO("=================================");
 
+    /* 모듈별 로그 레벨 개별 설정
+     * config.h의 LOG_LEVEL=DEBUG로 전체 DEBUG 컴파일 활성화 후,
+     * 런타임에 모듈별로 레벨을 올려서 불필요한 출력을 억제.
+     * 디버그 보고 싶은 모듈만 아래 목록에서 제거하면 됨. */
+    esp_log_level_set("*", ESP_LOG_INFO);     /* 기본: 전체 INFO */
+    esp_log_level_set("BAT", ESP_LOG_DEBUG);  /* 배터리/온도만 DEBUG */
+
     /* ===== 초기화 순서: 의존관계에 따른 순서 ===== */
 
     /* 1. HAL 레이어 (하드웨어 접근의 기반, 가장 먼저 초기화) */
