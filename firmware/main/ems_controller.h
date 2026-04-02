@@ -47,8 +47,7 @@ void ems_emergency_stop(void);
 /* 메인 루프에서 호출 (MICRO 모드 소프트웨어 토글, Phase 5: PID 업데이트) */
 void ems_update(void);
 
-/* 현재 듀티비 조회 (0.0~1.0, BLE 전송용) */
-float ems_get_current_duty(void);
+/* float ems_get_current_duty(void); — 미사용, Phase 5 BLE 출력값 보고 시 활성화 예정 */
 
 /* 출력 중 여부 */
 bool ems_is_active(void);

@@ -22,8 +22,7 @@
 /* 초기화 (PWM 채널 설정) */
 void vibration_init(void);
 
-/* 세기 설정 (1~5 → 듀티비 30~90%) */
-void vibration_set_intensity(uint8_t level);
+/* void vibration_set_intensity(uint8_t level); — 미사용, Phase 5 연속 진동 모드 시 활성화 예정 */
 
 /*
  * 펄스 진동 시작
@@ -34,8 +33,7 @@ void vibration_set_intensity(uint8_t level);
  */
 void vibration_pulse(uint16_t on_ms, uint16_t off_ms, uint8_t count);
 
-/* 연속 진동 시작 */
-void vibration_start(void);
+/* void vibration_start(void); — 미사용, Phase 5 연속 진동 모드 시 활성화 예정 */
 
 /* 진동 중지 */
 void vibration_stop(void);

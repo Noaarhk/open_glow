@@ -276,20 +276,24 @@ uint8_t battery_get_percent(void)
     return ctx.percent;
 }
 
+/* 미사용 — Phase 5 BLE 전압 보고 시 활성화 예정
 float battery_get_voltage(void)
 {
     return ctx.voltage;
 }
+*/
 
 float battery_get_temperature(void)
 {
     return ctx.temperature;
 }
 
+/* 미사용 — TP4056 CHRG 핀 연결 시 활성화 예정
 bool battery_is_charging(void)
 {
     return ctx.charging;
 }
+*/
 
 bool battery_is_voltage_connected(void)
 {

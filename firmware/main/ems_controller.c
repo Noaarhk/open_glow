@@ -241,12 +241,14 @@ void ems_update(void)
     /* TODO Phase 5: PID 업데이트 (현재는 즉시 전환이므로 처리 없음) */
 }
 
+/* 미사용 — Phase 5 BLE 출력값 보고 시 활성화 예정
 float ems_get_current_duty(void)
 {
     uint32_t max_duty = (1 << EMS_PWM_RESOLUTION_BITS) - 1;
     if (max_duty == 0) return 0.0f;
     return (float)ctx.target_duty / (float)max_duty;
 }
+*/
 
 bool ems_is_active(void)
 {

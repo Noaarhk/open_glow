@@ -19,8 +19,9 @@
 
 static const char *TAG = "VIB";
 
-/* 세기별 듀티비 (%) — 설계문서 기준 */
+/* 미사용 — vibration_set_intensity()와 함께 Phase 5 활성화 예정
 static const uint8_t duty_table[5] = { 30, 45, 60, 75, 90 };
+*/
 
 /* 내부 상태 */
 static struct {
@@ -55,6 +56,7 @@ void vibration_init(void)
              PIN_VIBRATION_PWM, VIBRATION_PWM_FREQ_HZ);
 }
 
+/* 미사용 — Phase 5 연속 진동 모드 시 활성화 예정
 void vibration_set_intensity(uint8_t level)
 {
     if (level < 1) level = 1;
@@ -62,6 +64,7 @@ void vibration_set_intensity(uint8_t level)
 
     ctx.current_duty = pct_to_duty(duty_table[level - 1]);
 }
+*/
 
 void vibration_pulse(uint16_t on_ms, uint16_t off_ms, uint8_t count)
 {
@@ -81,12 +84,14 @@ void vibration_pulse(uint16_t on_ms, uint16_t off_ms, uint8_t count)
              (unsigned long)ctx.current_duty, on_ms, count);
 }
 
+/* 미사용 — Phase 5 연속 진동 모드 시 활성화 예정
 void vibration_start(void)
 {
-    ctx.pulse_active = false;  /* 연속 모드에서는 펄스 비활성화 */
+    ctx.pulse_active = false;
     hal_pwm_set_duty(PWM_CH_VIBRATION, ctx.current_duty);
     hal_pwm_start(PWM_CH_VIBRATION);
 }
+*/
 
 void vibration_stop(void)
 {

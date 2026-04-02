@@ -108,6 +108,7 @@ bool event_queue_pop(event_t *event)
     return true;
 }
 
+/* 미사용 — 디버깅/모니터링 필요 시 활성화 예정
 bool event_queue_is_empty(void)
 {
     return count == 0;
@@ -117,3 +118,4 @@ uint8_t event_queue_count(void)
 {
     return count;
 }
+*/

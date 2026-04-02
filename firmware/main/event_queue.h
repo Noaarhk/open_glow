@@ -66,8 +66,9 @@ bool event_queue_push(event_t event);
 /* 이벤트 꺼내기 (메인 루프의 fsm_update에서 호출) */
 bool event_queue_pop(event_t *event);
 
-/* 큐 상태 조회 */
+/* 미사용 — 디버깅/모니터링 필요 시 활성화 예정
 bool event_queue_is_empty(void);
 uint8_t event_queue_count(void);
+*/
 
 #endif /* EVENT_QUEUE_H */

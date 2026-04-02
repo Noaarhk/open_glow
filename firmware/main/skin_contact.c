@@ -77,7 +77,9 @@ void skin_contact_update(void)
     }
 }
 
+/* 미사용 — FSM에서 피부 접촉 동기 조회 시 활성화 예정
 bool skin_contact_is_active(void)
 {
     return ctx.current_state;
 }
+*/

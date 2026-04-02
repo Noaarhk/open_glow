@@ -464,7 +464,9 @@ void ble_update(void)
     }
 }
 
+/* 미사용 — FSM에서 BLE 연결 상태 동기 조회 시 활성화 예정
 bool ble_is_connected(void)
 {
     return ctx.connected;
 }
+*/

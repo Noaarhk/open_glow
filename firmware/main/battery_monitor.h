@@ -29,14 +29,12 @@ void battery_update(void);
 /* 배터리 잔량 (0~100%) */
 uint8_t battery_get_percent(void);
 
-/* 배터리 전압 (V) */
-float battery_get_voltage(void);
+/* float battery_get_voltage(void); — 미사용, Phase 5 BLE 전압 보고 시 활성화 예정 */
 
 /* 온도 (°C) */
 float battery_get_temperature(void);
 
-/* 충전 중 여부 */
-bool battery_is_charging(void);
+/* bool battery_is_charging(void); — 미사용, TP4056 CHRG 핀 연결 시 활성화 예정 */
 
 /* 센서 연결 여부 (초기화 시 감지, 부팅 후 고정) */
 bool battery_is_voltage_connected(void);

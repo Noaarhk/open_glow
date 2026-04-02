@@ -21,7 +21,6 @@ void skin_contact_init(void);
 /* 메인 루프에서 호출 (접촉 상태 체크 + 이벤트 push) */
 void skin_contact_update(void);
 
-/* 현재 접촉 상태 조회 */
-bool skin_contact_is_active(void);
+/* bool skin_contact_is_active(void); — 미사용, FSM 연동 시 활성화 예정 */
 
 #endif /* SKIN_CONTACT_H */

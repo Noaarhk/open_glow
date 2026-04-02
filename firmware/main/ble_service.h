@@ -23,7 +23,6 @@ void ble_init(void);
 /* 메인 루프에서 호출 (상태 변화 → Notify 전송) */
 void ble_update(void);
 
-/* BLE 연결 여부 */
-bool ble_is_connected(void);
+/* bool ble_is_connected(void); — 미사용, FSM 연동 시 활성화 예정 */
 
 #endif /* BLE_SERVICE_H */
