@@ -24,6 +24,7 @@
 #include "ems_controller.h"
 #include "led_controller.h"
 #include "vibration_controller.h"
+#include "ble_service.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_adc.h"
 #include "hal/hal_pwm.h"
@@ -75,7 +76,7 @@ void app_main(void)
     fsm_init();
 
     /* 7. BLE 서비스 (FSM 이후 — 앱 명령 수신 준비) */
-    /* TODO Phase 4: ble_init(); */
+    ble_init();
 
     /* 8. Watchdog (모든 초기화 완료 후 마지막에 설정) */
     hal_watchdog_init(WATCHDOG_TIMEOUT_MS);
@@ -103,8 +104,8 @@ void app_main(void)
         led_update();
         vibration_update();
 
-        /* BLE 동기화 */
-        /* TODO Phase 4: ble_update(); */
+        /* BLE 동기화 (상태 변화 → Notify 전송) */
+        ble_update();
 
         vTaskDelay(pdMS_TO_TICKS(MAIN_LOOP_PERIOD_MS));
     }

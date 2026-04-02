@@ -266,7 +266,7 @@ void battery_update(void)
         ctx.temp_valid = false;
     }
 
-    LOG_DEBUG("BAT: %.2fV (%d%%) [%s], TEMP: %.1f°C [%s]",
+    LOG_DEBUG("%.2fV (%d%%) [%s], TEMP: %.1f°C [%s]",
               ctx.voltage, ctx.percent, ctx.voltage_valid ? "OK" : "N/A",
               ctx.temperature, ctx.temp_valid ? "OK" : "N/A");
 }
