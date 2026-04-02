@@ -10,7 +10,7 @@
 #include "openglow_config.h"
 #include "event_queue.h"
 #include "debug_log.h"
-#include "driver/gpio.h"
+#include "hal/hal_gpio.h"
 #include "esp_timer.h"
 
 static const char *TAG = "BTN";
@@ -66,16 +66,9 @@ void button_init(void)
         .vlong_event   = EVENT_BTN_MODE_SHORT,  /* 모드 버튼은 VLONG 없음 */
     };
 
-    /* GPIO 입력 + 풀업 설정 */
+    /* GPIO 입력 + 풀업 설정 (HAL 경유) */
     for (int i = 0; i < 2; i++) {
-        gpio_config_t cfg = {
-            .pin_bit_mask = (1ULL << buttons[i].pin),
-            .mode         = GPIO_MODE_INPUT,
-            .pull_up_en   = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type    = GPIO_INTR_DISABLE,
-        };
-        gpio_config(&cfg);
+        hal_gpio_set_input(buttons[i].pin, true);  /* true = 내부 풀업 활성화 */
     }
 
     LOG_INFO("Button handler initialized (POWER=GPIO%d, MODE=GPIO%d)",
@@ -86,7 +79,7 @@ void button_init(void)
 static void button_process(button_t *btn)
 {
     /* 1. GPIO raw 읽기 (LOW=눌림, 풀업이므로) */
-    bool raw_pressed = (gpio_get_level(btn->pin) == 0);
+    bool raw_pressed = (hal_gpio_read(btn->pin) == 0);
 
     /* 2. 디바운싱: 이전 값과 동일하면 카운터 증가 */
     if (raw_pressed == btn->last_raw) {

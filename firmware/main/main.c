@@ -99,6 +99,9 @@ void app_main(void)
         /* 중앙 제어 (이벤트 소비 → 상태 전이) */
         fsm_update();
 
+        /* 안전 출력 제한 반영 (safety → EMS 듀티 스케일링) */
+        ems_set_output_limit(safety_get_output_limit());
+
         /* 출력 업데이트 (FSM이 설정한 값 반영) */
         ems_update();
         led_update();

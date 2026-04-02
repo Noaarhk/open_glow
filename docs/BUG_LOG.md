@@ -257,3 +257,45 @@
   2. `sdkconfig`: `CONFIG_LOG_DEFAULT_LEVEL=4`, `CONFIG_LOG_MAXIMUM_LEVEL=4`로 변경 (ESP-IDF 게이트 해제)
   3. `main.c`: `esp_log_level_set("*", ESP_LOG_INFO)` + `esp_log_level_set("BAT", ESP_LOG_DEBUG)`로 런타임 제어 — 전체는 INFO, 보고 싶은 모듈만 DEBUG
 - **교훈**: ESP-IDF 로그 시스템은 컴파일 타임(`CONFIG_LOG_MAXIMUM_LEVEL`)과 런타임(`esp_log_level_set`)의 2단계 필터링. 런타임 설정만으로는 컴파일 타임에 제거된 로그를 복구할 수 없음. 개발 단계에서는 `MAXIMUM_LEVEL`을 DEBUG로 열어두고 런타임에서 모듈별로 제어하는 것이 유연함.
+
+---
+
+## BUG-017: button_handler.c가 HAL을 우회하여 ESP-IDF GPIO API 직접 호출
+
+- **발견 시점**: Phase 4 완료 후 — 면접 대비 코드 리뷰 중
+- **증상**: `button_handler.c`가 `#include "driver/gpio.h"`로 ESP-IDF API(`gpio_config()`, `gpio_get_level()`)를 직접 호출. 다른 모든 모듈(`ems_controller`, `skin_contact`, `safety_manager` 등)은 `hal/hal_gpio.h`를 경유하는데 버튼만 예외.
+- **원인**: Phase 1 개발 시 버튼 핸들러를 HAL보다 먼저 작성하면서 직접 호출로 구현. 이후 HAL 완성 후 버튼 핸들러를 HAL 경유로 전환하지 않은 일관성 누락.
+- **영향**: 기능상 문제 없음 (HAL 함수가 동일한 ESP-IDF API를 래핑). 단, 아키텍처 원칙("모든 하드웨어 접근은 HAL을 통해서만") 위반이며, PC 단위 테스트 시 `gpio_get_level()` mock 불가로 테스트 커버리지 저하.
+- **해결**:
+  1. `#include "driver/gpio.h"` → `#include "hal/hal_gpio.h"`
+  2. `gpio_config()` 8줄 → `hal_gpio_set_input(pin, true)` 1줄 (동일 설정 생성 확인 완료)
+  3. `gpio_get_level(btn->pin)` → `hal_gpio_read(btn->pin)`
+  4. 빌드 검증: 0 error, 0 warning
+- **교훈**: 추상화 레이어를 설계한 후에는 모든 모듈이 실제로 해당 레이어를 사용하는지 점검 필요. 특히 초기 개발 단계에서 먼저 작성된 코드는 나중에 완성된 인프라를 반영하지 못할 수 있음. 코드 리뷰나 `grep`으로 직접 의존(예: `#include "driver/"`)을 정기적으로 검사하면 예방 가능.
+
+---
+
+## BUG-018: safety_get_output_limit() 미연결 — 안전 출력 제한 미작동
+
+- **발견 시점**: Phase 4 완료 후 — 면접 대비 3회 코드 검증 중
+- **증상**: `safety_manager`가 온도/배터리 상태에 따라 `ctx.output_limit`를 계산하지만 (예: 42°C → 0.8, 배터리 10% → 0.7), 이 값이 EMS 출력에 전혀 반영되지 않음. Level 1 안전 출력 제한(점진적 감소)이 완전히 무효.
+- **원인**: `safety_get_output_limit()`과 `ems_set_output_limit()` 두 함수가 각각 선언/정의되어 있지만, 이 둘을 연결하는 호출 코드가 `main.c`, `device_fsm.c` 등 어디에도 없음. `safety_manager.c:16`의 주석에 의도된 흐름(`fsm_update() → safety_get_output_limit() → ems_set_output_limit()`)이 적혀 있으나 구현되지 않음.
+  ```
+  safety_manager.c:264  — float safety_get_output_limit(void) { return ctx.output_limit; }  ← 정의됨
+  ems_controller.c:149  — void ems_set_output_limit(float limit) { ... }                    ← 정의됨
+  main.c / device_fsm.c — 호출 없음                                                          ← 누락!
+  ```
+- **영향**: Level 2 비상 차단(`safety_emergency_shutdown()` → GPIO26 LOW + EMS 정지)만 작동. Level 1 점진적 출력 제한은 완전히 비활성 상태:
+  - 온도 40~50°C 구간에서 출력이 줄어들지 않음 (100% 유지)
+  - 배터리 10% 이하에서도 출력이 70%로 제한되지 않음
+  - 50°C 또는 5% 도달 시 비상 차단만 발동
+- **해결**: `main.c` 메인 루프에서 `fsm_update()` 이후, `ems_update()` 이전에 호출 추가:
+  ```c
+  fsm_update();
+  ems_set_output_limit(safety_get_output_limit());  /* ← 추가 */
+  ems_update();
+  ```
+- **교훈**:
+  1. 함수를 선언/정의하는 것과 실제로 호출하는 것은 별개. `grep`으로 "정의는 있지만 호출이 없는 함수"를 정기적으로 검사해야 함.
+  2. 안전 관련 코드는 "의도대로 연결되었는지" 통합 테스트가 필수. 단위 테스트에서 각 함수가 올바른 값을 반환해도, 호출 체인이 끊어져 있으면 무의미.
+  3. 주석에 적힌 설계 의도와 실제 코드의 일치 여부를 검증하는 습관이 중요.
