@@ -11,6 +11,7 @@
 #include "ems_controller.h"
 #include "led_controller.h"
 #include "vibration_controller.h"
+#include "battery_monitor.h"
 #include "debug_log.h"
 #include "esp_timer.h"
 
@@ -93,7 +94,7 @@ static void fsm_transition(device_state_t new_state)
             break;
         case STATE_CHARGING:
             ems_stop();
-            led_show_battery_level(50);  /* TODO Phase 3: battery_get_percent() */
+            led_show_battery_level(battery_get_percent());
             break;
         case STATE_ERROR:
             ems_stop();
@@ -139,6 +140,13 @@ static void handle_idle(event_t *evt)
             ctx.last_interaction_ms = get_time_ms();
             fsm_transition(STATE_MODE_SELECT);
             break;
+        case EVENT_BLE_MODE_CHANGE:
+            ctx.current_mode = (device_mode_t)(evt->data % MODE_COUNT);
+            ctx.last_interaction_ms = get_time_ms();
+            LOG_INFO("BLE mode change to %d", ctx.current_mode);
+            led_set_mode_color(ctx.current_mode);
+            fsm_transition(STATE_MODE_SELECT);
+            break;
         case EVENT_BTN_POWER_VLONG:
             fsm_transition(STATE_SHUTDOWN);
             break;
@@ -159,6 +167,13 @@ static void handle_mode_select(event_t *evt)
             ctx.current_mode = (ctx.current_mode + 1) % MODE_COUNT;
             ctx.last_interaction_ms = get_time_ms();
             LOG_INFO("Mode changed to %d", ctx.current_mode);
+            led_set_mode_color(ctx.current_mode);
+            vibration_pulse(100, 0, 1);
+            break;
+        case EVENT_BLE_MODE_CHANGE:
+            ctx.current_mode = (device_mode_t)(evt->data % MODE_COUNT);
+            ctx.last_interaction_ms = get_time_ms();
+            LOG_INFO("BLE mode set to %d", ctx.current_mode);
             led_set_mode_color(ctx.current_mode);
             vibration_pulse(100, 0, 1);
             break;
@@ -216,6 +231,29 @@ static void handle_running(event_t *evt)
         case EVENT_SAFETY_AUTO_WARNING:
             vibration_pulse(150, 100, 2);  /* 8분 경고: 약한 진동 2회 */
             LOG_INFO("Auto timeout warning (8min)");
+            break;
+        case EVENT_BLE_INTENSITY_CHANGE: {
+            uint8_t level = (uint8_t)evt->data;
+            if (level >= 1 && level <= 5) {
+                ctx.intensity_level = level;
+                ctx.last_interaction_ms = get_time_ms();
+                LOG_INFO("BLE intensity set to %d", level);
+                ems_set_intensity(ctx.intensity_level);
+                led_set_brightness(ctx.intensity_level * 51);
+                vibration_pulse(50, 0, 1);
+            }
+            break;
+        }
+        case EVENT_BLE_MODE_CHANGE:
+            /* RUNNING 중 모드 변경 거부 — Notify로 현재 값 재전송됨 */
+            LOG_INFO("BLE mode change rejected (RUNNING)");
+            break;
+        case EVENT_SAFETY_BATTERY_LOW:
+            /* 배터리 10% 이하 경고 — LED + 진동 */
+            led_set_color(255, 100, 0);  /* 주황색 경고 */
+            led_blink(LED_BLINK_SLOW_MS, LED_BLINK_SLOW_MS);
+            vibration_pulse(100, 100, 2);
+            LOG_WARN("Battery low warning");
             break;
         default:
             break;
@@ -314,13 +352,16 @@ static void check_timeouts(void)
             }
             break;
         case STATE_ERROR:
-            /* 온도 복구 체크: TEMP_WARNING이고 충분히 시간 경과 시 IDLE로 복구 */
+            /* 온도 복구 체크: TEMP_WARNING이고, 충분히 시간 경과하고, 실제 온도가 안전 범위일 때만 복구 */
             if (ctx.error_code == ERR_TEMP_WARNING &&
                 elapsed >= SAFETY_TEMP_RECOVER_DELAY_MS) {
-                /* TODO: 실제로는 battery_get_temperature()로 온도 확인 필요 */
-                LOG_INFO("ERROR auto recovery (temp normalized)");
-                ctx.error_code = ERR_NONE;
-                fsm_transition(STATE_IDLE);
+                float temp = battery_get_temperature();
+                if (!battery_is_temp_connected() || temp <= SAFETY_TEMP_RECOVER_C) {
+                    LOG_INFO("ERROR auto recovery (temp=%.1f°C <= %.0f°C)",
+                             temp, SAFETY_TEMP_RECOVER_C);
+                    ctx.error_code = ERR_NONE;
+                    fsm_transition(STATE_IDLE);
+                }
             }
             /* CRITICAL 에러는 자동 SHUTDOWN */
             if (ctx.error_code == ERR_TEMP_CRITICAL ||
@@ -358,6 +399,16 @@ void fsm_update(void)
     /* 1. event_queue drain: 모든 대기 이벤트 처리 */
     event_t evt;
     while (event_queue_pop(&evt)) {
+        /* 상태 무관 공통 이벤트 처리 */
+        if (evt.type == EVENT_BLE_LED_COLOR_CHANGE) {
+            uint8_t r = (evt.data >> 16) & 0xFF;
+            uint8_t g = (evt.data >> 8) & 0xFF;
+            uint8_t b = evt.data & 0xFF;
+            led_set_color(r, g, b);
+            LOG_INFO("BLE LED color set: R=%d G=%d B=%d", r, g, b);
+            continue;
+        }
+
         switch (ctx.current_state) {
             case STATE_OFF:         handle_off(&evt);         break;
             case STATE_IDLE:        handle_idle(&evt);        break;

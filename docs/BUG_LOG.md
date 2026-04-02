@@ -275,6 +275,27 @@
 
 ---
 
+## BUG-018: 전체 코드 점검 — 모듈 간 연결 누락 4건 일괄 수정
+
+- **발견 시점**: Phase 4 완료 후 — 전체 코드베이스 점검
+- **증상**: 모듈이 독립적으로 구현되면서 모듈 간 연결(glue code)이 누락됨. 함수가 정의되어 있지만 호출하는 곳이 없는 패턴.
+- **원인 분석**:
+  1. **모듈 간 연결 누락**: 각 모듈을 Phase별로 독립 구현하면서, A가 계산한 값을 B에 전달하는 코드가 빠짐
+  2. **이벤트 생성만 하고 소비 안 함**: event_queue에 push만 하고 FSM에 case 추가를 잊음
+  3. **TODO 방치**: Phase 3에서 해결할 TODO를 남겨두고 다음 Phase로 넘어감
+- **수정 내용 (4건)**:
+  1. **🔴 ERROR 자동 복구 시 실제 온도 미확인** — `check_timeouts()`에서 5초 후 무조건 복구하던 것을 `battery_get_temperature() <= SAFETY_TEMP_RECOVER_C` 조건 추가. 온도가 아직 높으면 복구하지 않음.
+  2. **🔴 BLE Write 이벤트 FSM 미처리** — `EVENT_BLE_MODE_CHANGE`(IDLE/MODE_SELECT에서 허용, RUNNING에서 거부), `EVENT_BLE_INTENSITY_CHANGE`(RUNNING에서 허용), `EVENT_BLE_LED_COLOR_CHANGE`(모든 상태에서 허용, 공통 처리) 핸들러 추가.
+  3. **🔴 EVENT_SAFETY_BATTERY_LOW 미처리** — RUNNING 상태에서 배터리 10% 이하 시 주황색 LED 깜빡임 + 진동 경고 2회 추가.
+  4. **🟡 충전 LED 하드코딩 50%** — `led_show_battery_level(50)` → `led_show_battery_level(battery_get_percent())` 변경.
+- **교훈**:
+  1. 모듈 구현 완료 후 "이 모듈의 출력을 누가 소비하는가?" 점검 필수.
+  2. `.h`에 선언된 함수가 실제로 호출되는지 `grep`으로 정기 검사.
+  3. event_queue에 새 이벤트 타입을 추가할 때, push 코드와 FSM handler를 반드시 짝으로 작성.
+  4. TODO 주석은 해당 Phase 진입 시 일괄 검색하여 해결.
+
+---
+
 ## BUG-018: safety_get_output_limit() 미연결 — 안전 출력 제한 미작동
 
 - **발견 시점**: Phase 4 완료 후 — 면접 대비 3회 코드 검증 중

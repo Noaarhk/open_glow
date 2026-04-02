@@ -3,6 +3,7 @@
 
 /*
  * BLE GATT 서버 모듈
+ * bluetooth low energy generic attribute profile server module
  *
  * ESP-IDF Bluedroid 스택 사용.
  * OpenGlow 커스텀 서비스 1개 + Characteristic 9개 구성.
