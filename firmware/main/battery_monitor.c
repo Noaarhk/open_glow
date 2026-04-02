@@ -24,6 +24,8 @@
 #include "hal/hal_gpio.h"
 #include "hal/hal_timer.h"
 #include "debug_log.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/task.h"
 #include <math.h>
 
 static const char *TAG = "BAT";
@@ -54,7 +56,10 @@ static struct {
     bool charging;              /* 현재 충전 상태 */
     bool prev_charging;         /* 이전 충전 상태 (변화 감지용) */
 
-    bool valid;                 /* ADC 읽기 유효성 */
+    bool voltage_connected;     /* 초기화 시 감지된 연결 상태 (부팅 후 고정) */
+    bool temp_connected;        /* 초기화 시 감지된 연결 상태 (부팅 후 고정) */
+    bool voltage_valid;         /* 런타임 유효성 (매 읽기마다 갱신) */
+    bool temp_valid;            /* 런타임 유효성 (매 읽기마다 갱신) */
     uint32_t last_adc_ms;       /* 마지막 ADC 읽기 시각 */
 } ctx;
 
@@ -124,6 +129,36 @@ static float adc_to_temperature(uint16_t filtered_raw)
 
 /* === 공개 함수 === */
 
+/* === 초기화 시 센서 연결 감지 === */
+
+static bool detect_sensor_voltage(void)
+{
+    int valid_count = 0;
+    for (int i = 0; i < SENSOR_DETECT_SAMPLES; i++) {
+        uint16_t raw = hal_adc_read(PIN_BATTERY_ADC);
+        if (raw > 0 && raw < ADC_MAX_RAW) {
+            float v = adc_to_voltage(raw);
+            if (v > 2.5f && v < 4.5f) valid_count++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return (valid_count >= SENSOR_DETECT_THRESHOLD);
+}
+
+static bool detect_sensor_temp(void)
+{
+    int valid_count = 0;
+    for (int i = 0; i < SENSOR_DETECT_SAMPLES; i++) {
+        uint16_t raw = hal_adc_read(PIN_TEMP_ADC);
+        if (raw > 0 && raw < ADC_MAX_RAW) {
+            float t = adc_to_temperature(raw);
+            if (t > -20.0f && t < 80.0f) valid_count++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return (valid_count >= SENSOR_DETECT_THRESHOLD);
+}
+
 void battery_init(void)
 {
     filter_init(&ctx.voltage_filter);
@@ -137,11 +172,29 @@ void battery_init(void)
     ctx.percent = 100;
     ctx.charging = false;
     ctx.prev_charging = false;
-    ctx.valid = true;
+    ctx.voltage_valid = false;
+    ctx.temp_valid = false;
     ctx.last_adc_ms = 0;
 
-    LOG_INFO("Battery monitor initialized (V=GPIO34, T=GPIO35, STAT=GPIO%d)",
+    /* 센서 연결 감지: ADC를 여러 번 읽어 범위 안이면 "연결됨"
+     * 감지 성공 시 valid도 true로 세팅 — safety_manager가 첫 ADC 읽기 전에
+     * "connected인데 valid 아님 → 고장"으로 오판하는 것을 방지 */
+    ctx.voltage_connected = detect_sensor_voltage();
+    ctx.voltage_valid = ctx.voltage_connected;
+    ctx.temp_connected = detect_sensor_temp();
+    ctx.temp_valid = ctx.temp_connected;
+
+    LOG_INFO("Battery monitor initialized (V=GPIO34 [%s], T=GPIO35 [%s], STAT=GPIO%d)",
+             ctx.voltage_connected ? "CONNECTED" : "NOT DETECTED",
+             ctx.temp_connected ? "CONNECTED" : "NOT DETECTED",
              PIN_CHARGE_STAT);
+
+    if (!ctx.voltage_connected) {
+        LOG_WARN("Battery voltage sensor not detected — voltage safety will use fallback policy");
+    }
+    if (!ctx.temp_connected) {
+        LOG_WARN("NTC temp sensor not detected — temperature safety will use fallback policy");
+    }
 }
 
 void battery_update(void)
@@ -178,32 +231,44 @@ void battery_update(void)
     if (now - ctx.last_adc_ms < BATTERY_UPDATE_INTERVAL_MS) return;
     ctx.last_adc_ms = now;
 
-    /* 배터리 전압 ADC */
+    /* 배터리 전압 ADC — raw 체크 + 전압 범위 체크 (2.5~4.5V 밖이면 미연결) */
     uint16_t v_raw = hal_adc_read(PIN_BATTERY_ADC);
-
-    /* 온도 ADC */
-    uint16_t t_raw = hal_adc_read(PIN_TEMP_ADC);
-
-    /* 유효성 검사: raw가 0 또는 4095이면 센서 고장 의심 */
-    if ((v_raw == 0 || v_raw == ADC_MAX_RAW) &&
-        (t_raw == 0 || t_raw == ADC_MAX_RAW)) {
-        ctx.valid = false;
-        LOG_WARN("ADC sensor fault suspected (V_raw=%d, T_raw=%d)", v_raw, t_raw);
-        return;
+    if (v_raw > 0 && v_raw < ADC_MAX_RAW) {
+        uint16_t v_filtered = filter_add(&ctx.voltage_filter, v_raw);
+        float voltage = adc_to_voltage(v_filtered);
+        if (voltage > 2.5f && voltage < 4.5f) {
+            ctx.voltage = voltage;
+            ctx.percent = voltage_to_percent(ctx.voltage);
+            ctx.voltage_valid = true;
+        } else {
+            if (ctx.voltage_valid) LOG_WARN("Battery voltage out of range (%.2fV), sensor disconnected?", voltage);
+            ctx.voltage_valid = false;
+        }
+    } else {
+        if (ctx.voltage_valid) LOG_WARN("Battery ADC fault (raw=%d)", v_raw);
+        ctx.voltage_valid = false;
     }
-    ctx.valid = true;
 
-    /* 이동평균 필터 적용 */
-    uint16_t v_filtered = filter_add(&ctx.voltage_filter, v_raw);
-    uint16_t t_filtered = filter_add(&ctx.temp_filter, t_raw);
+    /* 온도 ADC — 변환 후 범위 체크 (-20~80°C 밖이면 센서 미연결/고장) */
+    uint16_t t_raw = hal_adc_read(PIN_TEMP_ADC);
+    if (t_raw > 0 && t_raw < ADC_MAX_RAW) {
+        uint16_t t_filtered = filter_add(&ctx.temp_filter, t_raw);
+        float temp = adc_to_temperature(t_filtered);
+        if (temp > -20.0f && temp < 80.0f) {
+            ctx.temperature = temp;
+            ctx.temp_valid = true;
+        } else {
+            if (ctx.temp_valid) LOG_WARN("Temp out of range (%.1f°C), sensor disconnected?", temp);
+            ctx.temp_valid = false;
+        }
+    } else {
+        if (ctx.temp_valid) LOG_WARN("Temp ADC fault (raw=%d)", t_raw);
+        ctx.temp_valid = false;
+    }
 
-    /* 변환 */
-    ctx.voltage = adc_to_voltage(v_filtered);
-    ctx.percent = voltage_to_percent(ctx.voltage);
-    ctx.temperature = adc_to_temperature(t_filtered);
-
-    LOG_DEBUG("BAT: %.2fV (%d%%), TEMP: %.1f°C",
-              ctx.voltage, ctx.percent, ctx.temperature);
+    LOG_DEBUG("BAT: %.2fV (%d%%) [%s], TEMP: %.1f°C [%s]",
+              ctx.voltage, ctx.percent, ctx.voltage_valid ? "OK" : "N/A",
+              ctx.temperature, ctx.temp_valid ? "OK" : "N/A");
 }
 
 uint8_t battery_get_percent(void)
@@ -226,7 +291,22 @@ bool battery_is_charging(void)
     return ctx.charging;
 }
 
-bool battery_is_valid(void)
+bool battery_is_voltage_connected(void)
 {
-    return ctx.valid;
+    return ctx.voltage_connected;
+}
+
+bool battery_is_temp_connected(void)
+{
+    return ctx.temp_connected;
+}
+
+bool battery_is_voltage_valid(void)
+{
+    return ctx.voltage_valid;
+}
+
+bool battery_is_temp_valid(void)
+{
+    return ctx.temp_valid;
 }

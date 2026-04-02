@@ -101,6 +101,13 @@ typedef enum {
 #define SAFETY_BATTERY_CRIT_PCT     5
 #define SAFETY_SHOT_COOLDOWN_MS     500
 
+/* 센서 미연결 시 대체 안전 정책 */
+#define SAFETY_NO_TEMP_OUTPUT_LIMIT   0.7f    /* 온도 센서 없으면 출력 70% 제한 */
+#define SAFETY_NO_TEMP_MAX_MS         180000  /* 온도 센서 없으면 최대 3분 동작 */
+#define SAFETY_NO_BATT_MAX_MS         1200000 /* 배터리 센서 없으면 최대 20분 동작 */
+#define SENSOR_DETECT_SAMPLES         5       /* 초기화 시 연결 감지 읽기 횟수 */
+#define SENSOR_DETECT_THRESHOLD       3       /* 유효 판정 최소 횟수 */
+
 /* ===== 배터리 ===== */
 #define BATTERY_UPDATE_INTERVAL_MS  5000
 #define BATTERY_FILTER_SIZE         16
@@ -145,6 +152,6 @@ typedef enum {
 #define LOG_LEVEL_WARN   2
 #define LOG_LEVEL_ERROR  3
 
-#define LOG_LEVEL LOG_LEVEL_INFO
+#define LOG_LEVEL LOG_LEVEL_DEBUG
 
 #endif /* OPENGLOW_CONFIG_H */

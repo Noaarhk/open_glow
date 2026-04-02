@@ -38,7 +38,12 @@ float battery_get_temperature(void);
 /* 충전 중 여부 */
 bool battery_is_charging(void);
 
-/* ADC 읽기 유효성 (센서 고장 감지) */
-bool battery_is_valid(void);
+/* 센서 연결 여부 (초기화 시 감지, 부팅 후 고정) */
+bool battery_is_voltage_connected(void);
+bool battery_is_temp_connected(void);
+
+/* ADC 읽기 유효성 (런타임, 매 읽기마다 갱신) */
+bool battery_is_voltage_valid(void);
+bool battery_is_temp_valid(void);
 
 #endif /* BATTERY_MONITOR_H */
