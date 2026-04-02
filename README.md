@@ -8,9 +8,9 @@ BLE로 스마트폰 앱과 통신하는 임베디드 시스템입니다.
 
 - **MCU**: ESP32 DevKitC V4 (ESP-WROOM-32E)
 - **출력**: EMS 전극 (PWM), WS2812B RGB LED, 코인 진동 모터
-- **입력**: 전원 버튼, 모드 버튼, 피부 접촉 센서 (ADC), 온도 센서 (ADC)
-- **통신**: BLE GATT 서버 (스마트폰 앱 연동)
-- **전원**: 리튬 배터리 + 충전 IC
+- **입력**: 전원/모드 버튼, TTP223 터치 센서, NTC 10K 서미스터
+- **통신**: BLE GATT 서버 (nRF Connect 테스트 완료)
+- **전원**: 18650 리튬이온 (3.7V 2200mAh) + TP4056 충전 모듈
 
 ## 기술 스택
 
@@ -82,6 +82,10 @@ firmware/main/
 ├── ems_controller.h/c      # EMS PWM 펄스 생성
 ├── led_controller.h/c      # WS2812B 네오픽셀 RGB LED
 ├── vibration_controller.h/c # 코인 진동 모터 PWM
+├── skin_contact.h/c        # TTP223 피부 접촉 감지
+├── battery_monitor.h/c     # ADC 배터리/온도 측정 + 이동평균 필터
+├── safety_manager.h/c      # 이중 안전 (FSM 경유 + GPIO 직접 차단)
+├── ble_service.h/c         # BLE GATT 서버 (Bluedroid)
 ├── debug_log.h             # UART 시리얼 로깅
 └── hal/                    # Hardware Abstraction Layer
     ├── hal_gpio.h/c
@@ -108,14 +112,15 @@ idf.py -p /dev/cu.usbserial-* flash monitor
 ## 구현 진행 상황
 
 - [x] **Phase 1**: 기반 구조 — config, HAL, event_queue, button, FSM, 메인 루프
-- [x] **Phase 2**: 출력 모듈 — EMS, LED, 진동 모터
-- [ ] **Phase 3**: 센서 및 안전 — 피부 접촉, 배터리, safety_manager
-- [ ] **Phase 4**: 통신 — BLE GATT 서버
-- [ ] **Phase 5**: 고도화 — PID 트랜지션, LED 패턴, BLE Notify
+- [x] **Phase 2**: 출력 모듈 — EMS PWM(4모드), LED(WS2812B), 진동 모터
+- [x] **Phase 3**: 센서 및 안전 — TTP223 터치, 배터리/온도 ADC, 안전 관리자 (3단계 센서 정책)
+- [x] **Phase 4**: 통신 — BLE GATT 서버 (9개 Characteristic, Read/Write/Notify)
+- [ ] **Phase 5**: 고도화 — PID 트랜지션, LED 패턴, 비선형 배터리 보간
 - [ ] **Phase 6**: 보너스 — OTA, 커스텀 LED 등
 
 ## 문서
 
 - [CLAUDE.md](CLAUDE.md) — 프로젝트 설계 및 코딩 컨벤션
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — 상세 구현계획서 (모듈별 함수 시그니처, 데이터 구조)
-- [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) — ESP-IDF 설치 및 개발환경 세팅 가이드
+- [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) — ESP-IDF 설치 및 개발환경 세팅 가이드 (+ 하드웨어 부품/배선표)
+- [docs/BUG_LOG.md](docs/BUG_LOG.md) — 버그 기록 (BUG-001 ~ 016)
